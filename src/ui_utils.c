@@ -1805,6 +1805,7 @@ static gboolean tree_view_find(GtkTreeView *treeview, TVMatchCallback cb, gboole
 			gtk_tree_view_get_model(treeview), &iter);
 
 		gtk_tree_view_scroll_to_cell(treeview, path, NULL, TRUE, 0.5, 0.5);
+		gtk_tree_view_set_cursor(treeview, path, NULL, FALSE);
 		gtk_tree_path_free(path);
 	}
 	return TRUE;
