@@ -317,7 +317,7 @@ static void parseClass (const char *cp, vString *const class,
 	vStringDelete (inheritance);
 }
 
-static void parseImports (const char *cp)
+static int parseImports (const char *cp)
 {
 	const char *pos;
 	vString *name, *name_next;
@@ -325,13 +325,17 @@ static void parseImports (const char *cp)
 	cp = skipEverything (cp);
 
 	if ((pos = strstr (cp, "import")) == NULL)
-		return;
+		return 1;
 
 	cp = pos + 6;
 
 	/* continue only if there is some space between the keyword and the identifier */
 	if (! isspace (*cp))
-		return;
+		return 1;
+
+	/* enable parsing multiline parenthesized imports */
+	if ((strstr (cp, "(") != NULL) && (strstr (cp, ")") == NULL))
+		return 0;
 
 	cp++;
 	cp = skipSpace (cp);
@@ -358,6 +362,7 @@ static void parseImports (const char *cp)
 	}
 	vStringDelete (name);
 	vStringDelete (name_next);
+	return 1;
 }
 
 /* modified from lcpp.c getArglistFromStr().
@@ -816,7 +821,8 @@ static void findPythonTags (void)
 			}
 		}
 		/* Find and parse imports */
-		parseImports(line);
+		if (!parseImports(line))
+			line_skip = 1;
 	}
 	/* Clean up all memory we allocated. */
 	vStringDelete (parent);
