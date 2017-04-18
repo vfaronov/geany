@@ -1057,6 +1057,7 @@ static gboolean load_config(const gchar *filename)
 	p->file_name = utils_get_utf8_from_locale(filename);
 	p->base_path = utils_get_setting_string(config, "project", "base_path", "");
 	p->file_patterns = g_key_file_get_string_list(config, "project", "file_patterns", NULL, NULL);
+	p->priv->freeze_session = utils_get_setting_boolean(config, "project", "freeze_session", FALSE);
 
 	p->priv->long_line_behaviour = utils_get_setting_integer(config, "long line marker",
 		"long_line_behaviour", 1 /* follow global */);
@@ -1127,8 +1128,8 @@ static gboolean write_config(void)
 	g_key_file_set_integer(config, "long line marker", "long_line_behaviour", p->priv->long_line_behaviour);
 	g_key_file_set_integer(config, "long line marker", "long_line_column", p->priv->long_line_column);
 
-	/* store the session files into the project too */
-	if (project_prefs.project_session)
+	/* store the session files into the project too, unless they are frozen */
+	if (project_prefs.project_session && !p->priv->freeze_session)
 		configuration_save_session_files(config);
 	build_save_menu(config, (gpointer)p, GEANY_BCS_PROJ);
 	g_signal_emit_by_name(geany_object, "project-save", config);
