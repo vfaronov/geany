@@ -363,14 +363,15 @@ static void parseImports (const char *cp)
 /* modified from lcpp.c getArglistFromStr().
  * warning: terminates rest of string past arglist!
  * note: does not ignore brackets inside strings! */
-static char *parseArglist(const char *buf)
+static int parseArglist(const char *buf, char **arglist)
 {
 	char *start, *end;
 	int level;
+	*arglist = NULL;
 	if (NULL == buf)
-		return NULL;
+		return 1;
 	if (NULL == (start = strchr(buf, '(')))
-		return NULL;
+		return 1;
 	for (level = 1, end = start + 1; level > 0; ++end)
 	{
 		if ('\0' == *end)
@@ -381,19 +382,23 @@ static char *parseArglist(const char *buf)
 			-- level;
 	}
 	*end = '\0';
-	return strdup(start);
+	*arglist = strdup(start);
+	return level == 0;
 }
 
-static void parseFunction (const char *cp, vString *const def,
+static int parseFunction (const char *cp, vString *const def,
 	vString *const parent, int is_class_parent)
 {
 	char *arglist;
+	int full;
 
 	cp = parseIdentifier (cp, def);
-	arglist = parseArglist (cp);
-	makeFunctionTag (def, parent, is_class_parent, arglist);
+	full = parseArglist (cp, &arglist);
+	if (full)
+		makeFunctionTag (def, parent, is_class_parent, arglist);
 	if (arglist != NULL)
 		eFree (arglist);
+	return full;
 }
 
 /* Get the combined name of a nested symbol. Classes are separated with ".",
@@ -802,7 +807,10 @@ static void findPythonTags (void)
 				if (is_class)
 					parseClass (cp, name, parent, is_parent_class);
 				else
-					parseFunction(cp, name, parent, is_parent_class);
+				{
+					if (!parseFunction(cp, name, parent, is_parent_class))
+						line_skip = 1;
+				}
 
 				addNestingLevel(nesting_levels, indent, name, is_class);
 			}
