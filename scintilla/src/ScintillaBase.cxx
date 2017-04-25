@@ -171,9 +171,6 @@ int ScintillaBase::KeyCommand(unsigned int iMessage) {
 		case SCI_TAB:
 			AutoCompleteCompleted(0, SC_AC_TAB);
 			return 0;
-		case SCI_NEWLINE:
-			AutoCompleteCompleted(0, SC_AC_NEWLINE);
-			return 0;
 
 		default:
 			AutoCompleteCancel();
