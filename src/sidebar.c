@@ -48,6 +48,9 @@
 #include <gdk/gdkkeysyms.h>
 
 
+#define FUZZY_SEARCH_SEPARATOR "/"
+
+
 SidebarTreeviews tv = {NULL, NULL, NULL};
 /* while typeahead searching, editor should not get focus */
 static gboolean may_steal_focus = FALSE;
@@ -105,6 +108,48 @@ static void sidebar_tabs_show_hide(GtkNotebook *notebook, GtkWidget *child,
 								   guint page_num, gpointer data);
 
 
+/* Match document tags against a search key typed by the user.
+ * Invoked by GTK+ for typeahead search in the symbols treeview.
+ * Uses g_str_match_string for fuzzy matching of alphanumeric tokens.
+ *
+ * If the key contains "/", then only the last part is matched against tag names, while
+ * the preceding parts are matched against tag scopes. In other words, if we have a Python
+ * document with class Foo and class Bar both containing a method named quux, then the user
+ * can find Foo.quux by typing "f/q". Slash is used here as a universal separator.
+ *
+ * Note that a return value of TRUE means "miss", as required by GTK+. */
+static gboolean tree_view_search_fuzzy_func(GtkTreeModel *model, gint column,
+		const gchar *key, GtkTreeIter *iter, gpointer search_data)
+{
+	gchar *scope_key = NULL;
+	const gchar *name_key;
+	TMTag *tag;
+	gboolean miss;
+
+	gtk_tree_model_get(model, iter, column, &tag, -1);
+	if (!tag || !tag->name)
+		return TRUE;
+
+	name_key = g_strrstr(key, FUZZY_SEARCH_SEPARATOR);
+	if (name_key)
+		scope_key = g_strndup(key, name_key - key);
+	else
+		name_key = key;
+
+	miss = !g_str_match_string(name_key, tag->name, FALSE);
+	if (!miss && scope_key)
+	{
+		if (tag->scope)
+			miss = !g_str_match_string(scope_key, tag->scope, FALSE);
+		else
+			miss = TRUE;
+	}
+
+	g_free(scope_key);
+	return miss;
+}
+
+
 /* the prepare_* functions are document-related, but I think they fit better here than in document.c */
 static void prepare_taglist(GtkWidget *tree, GtkTreeStore *store)
 {
@@ -132,6 +177,10 @@ static void prepare_taglist(GtkWidget *tree, GtkTreeStore *store)
 
 	gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(store));
 	g_object_unref(store);
+
+	gtk_tree_view_set_search_column(GTK_TREE_VIEW(tree), SYMBOLS_COLUMN_TAG);
+	gtk_tree_view_set_search_equal_func(GTK_TREE_VIEW(tree), tree_view_search_fuzzy_func,
+		NULL, NULL);
 
 	g_signal_connect(tree, "button-press-event",
 		G_CALLBACK(sidebar_button_press_cb), NULL);
