@@ -1919,6 +1919,16 @@ static void goto_popup_position_func(GtkMenu *menu, gint *x, gint *y, gboolean *
 }
 
 
+static gchar *full_tag_name(GeanyDocument *doc, const TMTag *tag)
+{
+	if (tag->scope)
+		return g_strconcat(tag->scope, symbols_get_context_separator(doc->file_type->id),
+				tag->name, NULL);
+	else
+		return g_strdup(tag->name);
+}
+
+
 static void show_goto_popup(GeanyDocument *doc, GPtrArray *tags, gboolean have_best)
 {
 	GtkWidget *first = NULL;
@@ -1935,15 +1945,33 @@ static void show_goto_popup(GeanyDocument *doc, GPtrArray *tags, gboolean have_b
 		GtkWidget *item;
 		GtkWidget *label;
 		GtkWidget *image;
-		gchar *fname = g_path_get_basename(tmtag->file->file_name);
+		gchar *tagname = full_tag_name(doc, tmtag);
+		gchar *project_base = project_get_base_path();
+		gchar *fname = NULL;
+		gchar *fname_short = NULL;
 		gchar *text;
 
+		/* For files that are under a project's root, show path relative to that root. */
+		if (project_base && g_str_has_prefix(tmtag->file->file_name, project_base))
+			fname = tmtag->file->file_name + strlen(project_base);
+
+		/* For other files, or if the path doesn't fit, show the basename with a "..." prefix
+		 * (to make it clear that it isn't relative to any specific root). */
+		if (! fname || strlen(fname) > 50)
+		{
+			fname_short = g_path_get_basename(tmtag->file->file_name);
+			SETPTR(fname_short, g_build_filename("...", fname_short, NULL));
+			fname = fname_short;
+		}
+
+		/* For translators: this is a label in the goto-symbol popup menu:
+		 * the first %s is the symbol name (like "foo" or "Bar::baz"),
+		 * the second %s is a filename, and %lu is the line number. */
+		text = g_markup_printf_escaped(_("%s\n<small>%s: %lu</small>"),
+			tagname, fname, tmtag->line);
+
 		if (! first && have_best)
-			/* For translators: it's the filename and line number of a symbol in the goto-symbol popup menu */
-			text = g_markup_printf_escaped(_("<b>%s: %lu</b>"), fname, tmtag->line);
-		else
-			/* For translators: it's the filename and line number of a symbol in the goto-symbol popup menu */
-			text = g_markup_printf_escaped(_("%s: %lu"), fname, tmtag->line);
+			SETPTR(text, g_strdup_printf("<b>%s</b>", text));
 
 		image = gtk_image_new_from_pixbuf(symbols_icons[get_tag_class(tmtag)].pixbuf);
 		label = g_object_new(GTK_TYPE_LABEL, "label", text, "use-markup", TRUE, "xalign", 0.0, NULL);
@@ -1956,7 +1984,9 @@ static void show_goto_popup(GeanyDocument *doc, GPtrArray *tags, gboolean have_b
 			first = item;
 
 		g_free(text);
-		g_free(fname);
+		g_free(fname_short);
+		g_free(project_base);
+		g_free(tagname);
 	}
 
 	gtk_widget_show_all(menu);
@@ -2359,12 +2389,7 @@ static gint get_current_tag_name(GeanyDocument *doc, gchar **tagname, TMTagType 
 
 			if (line <= last_child)
 			{
-				if (tag->scope)
-					*tagname = g_strconcat(tag->scope,
-							symbols_get_context_separator(doc->file_type->id), tag->name, NULL);
-				else
-					*tagname = g_strdup(tag->name);
-
+				*tagname = full_tag_name(doc, tag);
 				return tag_line;
 			}
 		}
