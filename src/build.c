@@ -127,6 +127,7 @@ static void show_build_result_message(gboolean failure);
 static void process_build_output_line(gchar *msg, gint color);
 static void show_build_commands_dialog(void);
 static void on_build_menu_item(GtkWidget *w, gpointer user_data);
+static gboolean show_msgwin_compiler_tab(void);
 
 void build_finalize(void)
 {
@@ -979,6 +980,7 @@ static void process_build_output_line(gchar *msg, gint color)
 		}
 		build_info.message_count++;
 		color = COLOR_RED;	/* error message parsed on the line */
+		show_msgwin_compiler_tab();
 	}
 	g_free(filename);
 
@@ -1037,6 +1039,17 @@ gboolean build_parse_make_dir(const gchar *string, gchar **prefix)
 }
 
 
+static gboolean show_msgwin_compiler_tab(void)
+{
+	if (! ui_prefs.msgwindow_visible)
+	{
+		gtk_notebook_set_current_page(GTK_NOTEBOOK(msgwindow.notebook), MSG_COMPILER);
+		msgwin_show_hide(TRUE);
+	}
+	return gtk_notebook_get_current_page(GTK_NOTEBOOK(msgwindow.notebook)) == MSG_COMPILER;
+}
+
+
 static void show_build_result_message(gboolean failure)
 {
 	gchar *msg;
@@ -1046,13 +1059,7 @@ static void show_build_result_message(gboolean failure)
 		msg = _("Compilation failed.");
 		msgwin_compiler_add_string(COLOR_BLUE, msg);
 		/* If msgwindow is hidden, user will want to display it to see the error */
-		if (! ui_prefs.msgwindow_visible)
-		{
-			gtk_notebook_set_current_page(GTK_NOTEBOOK(msgwindow.notebook), MSG_COMPILER);
-			msgwin_show_hide(TRUE);
-		}
-		else
-		if (gtk_notebook_get_current_page(GTK_NOTEBOOK(msgwindow.notebook)) != MSG_COMPILER)
+		if (! show_msgwin_compiler_tab())
 			ui_set_statusbar(FALSE, "%s", msg);
 	}
 	else
