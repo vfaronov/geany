@@ -76,7 +76,6 @@ filetypes = \
 tagfiles = \
 	tags/std99.c.tags \
 	tags/std.php.tags \
-	tags/std.py.tags \
 	tags/std.pas.tags \
 	tags/entities.html.tags
 
