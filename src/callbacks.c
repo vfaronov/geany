@@ -338,6 +338,15 @@ void on_toolbutton_reload_clicked(GtkAction *action, gpointer user_data)
 }
 
 
+/* reload all files */
+void on_toolbutton_reload_all_clicked(GtkAction *action, gpointer user_data)
+{
+	GeanyDocument *cur_doc = document_get_current();
+
+	document_reload_all_prompt(cur_doc);
+}
+
+
 static void on_change_font1_activate(GtkMenuItem *menuitem, gpointer user_data)
 {
 	dialogs_show_open_font();
