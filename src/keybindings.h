@@ -276,6 +276,7 @@ enum GeanyKeyBindingID
 	GEANY_KEYS_EDITOR_DELETELINETOBEGINNING,	/**< Keybinding. */
 	GEANY_KEYS_EDITOR_PREVCALLTIP,				/**< Keybinding. */
 	GEANY_KEYS_EDITOR_NEXTCALLTIP,				/**< Keybinding. */
+	GEANY_KEYS_GOTO_ADDPOSITION,				/**< Keybinding. */
 	GEANY_KEYS_COUNT	/* must not be used by plugins */
 };
 
