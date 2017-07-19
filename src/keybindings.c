@@ -2036,8 +2036,7 @@ static gboolean cb_func_goto_action(guint key_id)
 			navqueue_go_forward();
 			return TRUE;
 		case GEANY_KEYS_GOTO_ADDPOSITION:
-			if (doc->file_name)
-				navqueue_add_position(doc->file_name, sci_get_current_position(doc->editor->sci));
+			navqueue_add_position(doc, sci_get_current_position(doc->editor->sci));
 			return TRUE;
 		case GEANY_KEYS_GOTO_LINE:
 		{

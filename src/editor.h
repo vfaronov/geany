@@ -71,7 +71,9 @@ typedef enum
 	 *  rounded box around the text. */
 	/* start container indicator outside of lexer indicators (0..7), see Scintilla docs */
 	GEANY_INDICATOR_SEARCH = 8,
-	GEANY_INDICATOR_SNIPPET = 9
+	GEANY_INDICATOR_SNIPPET = 9,
+	/** Hidden indicator used to remember and recall navigation history (navqueue). */
+	GEANY_INDICATOR_NAVIGATION = 10
 }
 GeanyIndicator;
 

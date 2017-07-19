@@ -179,7 +179,10 @@ void				sci_set_readonly			(ScintillaObject *sci, gboolean readonly);
 gint				sci_get_lines_selected		(ScintillaObject *sci);
 gint				sci_get_first_visible_line	(ScintillaObject *sci);
 
+void				sci_indicator_set_value		(ScintillaObject *sci, gint value);
 void				sci_indicator_fill			(ScintillaObject *sci, gint pos, gint len);
+gint				sci_indicator_end			(ScintillaObject *sci, gint indic, gint pos);
+gint				sci_indicator_value_at		(ScintillaObject *sci, gint indic, gint pos);
 
 void				sci_select_all				(ScintillaObject *sci);
 gint				sci_get_line_indent_position(ScintillaObject *sci, gint line);

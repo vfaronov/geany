@@ -39,15 +39,31 @@
 #include "gtkcompat.h"
 
 
+#define MAX_NAVQUEUE_LENGTH 100
+
+
 /* for the navigation history queue */
 typedef struct
 {
-	const gchar *file;	/* This is the document's filename, in UTF-8 */
+	/* The filename in which the anchor is located. */
+	gchar *file;
+
+	/* The document in which the anchor is located. This is an optimization to avoid calling
+	 * document_find_by_filename often (it is linear in the number of open documents).
+	 * If the document is closed, the GeanyDocument is zeroed, but the pointer stays valid. */
+	GeanyDocument *doc;
+
+	/* A unique ID that is associated with the navigation indicator in Scintilla. */
+	gint id;
+
+	/* The Scintilla position at the time when this anchor was created. It may be invalidated
+	 * by changes to the document (#1480), but it's useful as fallback and for optimization. */
 	gint pos;
-} filepos;
+} NavigationAnchor;
 
 static GQueue *navigation_queue;
 static guint nav_queue_pos;
+static gint counter;
 
 static GtkAction *navigation_buttons[2];
 
@@ -57,6 +73,7 @@ void navqueue_init(void)
 {
 	navigation_queue = g_queue_new();
 	nav_queue_pos = 0;
+	counter = 0;
 
 	navigation_buttons[0] = toolbar_get_action_by_name("NavBack");
 	navigation_buttons[1] = toolbar_get_action_by_name("NavFor");
@@ -100,41 +117,121 @@ static void adjust_buttons(void)
 }
 
 
+static NavigationAnchor *set_anchor(GeanyDocument *doc, gint pos)
+{
+	NavigationAnchor *anchor = g_new0(NavigationAnchor, 1);
+
+	counter++;
+	anchor->doc = doc;
+	anchor->file = g_strdup(doc->file_name);
+	anchor->id = counter;
+	anchor->pos = pos;
+	sci_indicator_set(doc->editor->sci, GEANY_INDICATOR_NAVIGATION);
+	sci_indicator_set_value(doc->editor->sci, anchor->id);
+	sci_indicator_fill(doc->editor->sci, anchor->pos, 1);
+	return anchor;
+}
+
+
+static void refresh_anchor(NavigationAnchor *anchor)
+{
+	gint pos, prev;
+
+	/* GeanyDocument is zeroed when the document is closed, and may later be reused for
+	 * a different file, so make sure our doc pointer is up to date. */
+	if (! DOC_VALID(anchor->doc) || ! utils_str_equal(anchor->doc->file_name, anchor->file))
+		anchor->doc = document_find_by_filename(anchor->file);
+
+	if (anchor->doc == NULL || anchor->id == 0)
+		return;
+
+	/* Now we want to update anchor->pos, which may have shifted due to changes in
+	 * the document's text. The new position can be found from the navigation indicator. */
+
+	/* First, a shortcut for the common case where text has not changed. */
+	if (sci_indicator_value_at(anchor->doc->editor->sci, GEANY_INDICATOR_NAVIGATION,
+			anchor->pos) == anchor->id)
+		return;
+
+	/* Iterate over all ranges of the navigation indicator in this document, looking for
+	 * the range with this anchor's ID. */
+	pos = 0;
+	do
+	{
+		prev = pos;
+		if (sci_indicator_value_at(anchor->doc->editor->sci, GEANY_INDICATOR_NAVIGATION, pos)
+			== anchor->id)
+		{
+			anchor->pos = pos;
+			return;
+		}
+		pos = sci_indicator_end(anchor->doc->editor->sci, GEANY_INDICATOR_NAVIGATION, pos);
+	} while (pos > prev);
+
+	/* There may be no indicator range with the anchor's ID, e.g. if the document has been
+	 * reloaded, or the text in question has been deleted. In that case, invalidate the ID
+	 * so we never have to look for it again. */
+	anchor->id = 0;
+}
+
+
+static void clear_anchor(NavigationAnchor *anchor)
+{
+	refresh_anchor(anchor);
+	if (anchor->doc != NULL
+		&& sci_indicator_value_at(anchor->doc->editor->sci, GEANY_INDICATOR_NAVIGATION,
+			anchor->pos) == anchor->id)
+	{
+		sci_indicator_set(anchor->doc->editor->sci, GEANY_INDICATOR_NAVIGATION);
+		sci_indicator_clear(anchor->doc->editor->sci, anchor->pos, 1);
+	}
+
+	g_free(anchor->file);
+	g_free(anchor);
+}
+
+
 static gboolean
-queue_pos_matches(guint queue_pos, const gchar *fname, gint pos)
+queue_pos_matches(guint queue_pos, GeanyDocument *doc, gint pos)
 {
 	if (queue_pos < g_queue_get_length(navigation_queue))
 	{
-		filepos *fpos = g_queue_peek_nth(navigation_queue, queue_pos);
+		NavigationAnchor *anchor = g_queue_peek_nth(navigation_queue, queue_pos);
 
-		return (utils_str_equal(fpos->file, fname) && fpos->pos == pos);
+		if (utils_str_equal(anchor->file, doc->file_name))
+		{
+			refresh_anchor(anchor);
+			return anchor->pos == pos;
+		}
 	}
 	return FALSE;
 }
 
 
-void navqueue_add_position(const gchar *utf8_filename, gint pos)
+void navqueue_add_position(GeanyDocument *doc, gint pos)
 {
-	filepos *npos;
-	guint i;
+	NavigationAnchor *anchor;
 
-	if (queue_pos_matches(nav_queue_pos, utf8_filename, pos))
+	if (doc->file_name == NULL)
+		return;
+
+	if (queue_pos_matches(nav_queue_pos, doc, pos))
 		return;	/* prevent duplicates */
 
-	npos = g_new0(filepos, 1);
-	npos->file = utf8_filename;
-	npos->pos = pos;
-
 	/* if we've jumped to a new position from inside the queue rather than going forward */
-	if (nav_queue_pos > 0)
+	while (nav_queue_pos > 0)
 	{
-		for (i = 0; i < nav_queue_pos; i++)
-		{
-			g_free(g_queue_pop_head(navigation_queue));
-		}
-		nav_queue_pos = 0;
+		clear_anchor(g_queue_pop_head(navigation_queue));
+		nav_queue_pos--;
 	}
-	g_queue_push_head(navigation_queue, npos);
+
+	anchor = set_anchor(doc, pos);
+	g_queue_push_head(navigation_queue, anchor);
+
+	/* Avoid accumulating too many indicator positions, so refresh_anchor stays fast. */
+	while (g_queue_get_length(navigation_queue) > MAX_NAVQUEUE_LENGTH)
+		clear_anchor(g_queue_pop_tail(navigation_queue));
+
 	adjust_buttons();
 }
 
@@ -161,37 +258,32 @@ gboolean navqueue_goto_line(GeanyDocument *old_doc, GeanyDocument *new_doc, gint
 	pos = sci_get_position_from_line(new_doc->editor->sci, line - 1);
 
 	/* first add old file position */
-	if (old_doc != NULL && old_doc->file_name)
+	if (old_doc != NULL)
 	{
 		gint cur_pos = sci_get_current_position(old_doc->editor->sci);
 
-		navqueue_add_position(old_doc->file_name, cur_pos);
+		navqueue_add_position(old_doc, cur_pos);
 	}
 
 	/* now add new file position */
-	if (new_doc->file_name)
-	{
-		navqueue_add_position(new_doc->file_name, pos);
-	}
+	navqueue_add_position(new_doc, pos);
 
 	return editor_goto_pos(new_doc->editor, pos, TRUE);
 }
 
 
-static gboolean goto_file_pos(const gchar *file, gint pos)
+static gboolean goto_anchor(NavigationAnchor *anchor)
 {
-	GeanyDocument *doc = document_find_by_filename(file);
-
-	if (doc == NULL)
+	refresh_anchor(anchor);
+	if (anchor->doc == NULL)
 		return FALSE;
-
-	return editor_goto_pos(doc->editor, pos, TRUE);
+	return editor_goto_pos(anchor->doc->editor, anchor->pos, TRUE);
 }
 
 
 void navqueue_go_back(void)
 {
-	filepos *fprev;
+	NavigationAnchor *prev;
 	GeanyDocument *doc = document_get_current();
 
 	/* If the navqueue is currently at some position A, but the actual cursor is at some other
@@ -199,10 +291,7 @@ void navqueue_go_back(void)
 	 * item in the queue; and (2) we can later restore B by going forward.
 	 * (If A = B, navqueue_add_position will ignore it.) */
 	if (doc)
-	{
-		if (doc->file_name)
-			navqueue_add_position(doc->file_name, sci_get_current_position(doc->editor->sci));
-	}
+		navqueue_add_position(doc, sci_get_current_position(doc->editor->sci));
 	else
 		/* see also https://github.com/geany/geany/pull/1537 */
 		g_warning("Attempted navigation when nothing is open");
@@ -213,15 +302,15 @@ void navqueue_go_back(void)
 		return;
 
 	/* jump back */
-	fprev = g_queue_peek_nth(navigation_queue, nav_queue_pos + 1);
-	if (goto_file_pos(fprev->file, fprev->pos))
+	prev = g_queue_peek_nth(navigation_queue, nav_queue_pos + 1);
+	if (goto_anchor(prev))
 	{
 		nav_queue_pos++;
 	}
 	else
 	{
 		/** TODO: add option to re open the file */
-		g_free(g_queue_pop_nth(navigation_queue, nav_queue_pos + 1));
+		clear_anchor(g_queue_pop_nth(navigation_queue, nav_queue_pos + 1));
 	}
 	adjust_buttons();
 }
@@ -229,22 +318,22 @@ void navqueue_go_back(void)
 
 void navqueue_go_forward(void)
 {
-	filepos *fnext;
+	NavigationAnchor *next;
 
 	if (nav_queue_pos < 1 ||
 		nav_queue_pos >= g_queue_get_length(navigation_queue))
 		return;
 
 	/* jump forward */
-	fnext = g_queue_peek_nth(navigation_queue, nav_queue_pos - 1);
-	if (goto_file_pos(fnext->file, fnext->pos))
+	next = g_queue_peek_nth(navigation_queue, nav_queue_pos - 1);
+	if (goto_anchor(next))
 	{
 		nav_queue_pos--;
 	}
 	else
 	{
 		/** TODO: add option to re open the file */
-		g_free(g_queue_pop_nth(navigation_queue, nav_queue_pos - 1));
+		clear_anchor(g_queue_pop_nth(navigation_queue, nav_queue_pos - 1));
 	}
 
 	adjust_buttons();
@@ -253,7 +342,7 @@ void navqueue_go_forward(void)
 
 static gint find_by_filename(gconstpointer a, gconstpointer b)
 {
-	if (utils_str_equal(((const filepos*)a)->file, (const gchar*) b))
+	if (utils_str_equal(((const NavigationAnchor*)a)->file, (const gchar*) b))
 		return 0;
 	else
 		return 1;
@@ -270,9 +359,14 @@ void navqueue_remove_file(const gchar *filename)
 
 	while ((match = g_queue_find_custom(navigation_queue, filename, find_by_filename)))
 	{
-		g_free(match->data);
+		clear_anchor(match->data);
 		g_queue_delete_link(navigation_queue, match);
 	}
+
+	if (nav_queue_pos >= g_queue_get_length(navigation_queue))
+		/* TODO: Should do something smarter (i.e. shift the position towards the head
+		 * until it's valid), but not sure how to do that well given the GQueue primitives. */
+		nav_queue_pos = 0;
 
 	adjust_buttons();
 }

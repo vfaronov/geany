@@ -1119,9 +1119,27 @@ void sci_indicator_set(ScintillaObject *sci, gint indic)
 }
 
 
+void sci_indicator_set_value(ScintillaObject *sci, gint value)
+{
+	SSM(sci, SCI_SETINDICATORVALUE, (uptr_t) value, 0);
+}
+
+
 void sci_indicator_fill(ScintillaObject *sci, gint pos, gint len)
 {
 	SSM(sci, SCI_INDICATORFILLRANGE, (uptr_t) pos, len);
+}
+
+
+gint sci_indicator_end(ScintillaObject *sci, gint indic, gint pos)
+{
+	return (gint) SSM(sci, SCI_INDICATOREND, (uptr_t) indic, (uptr_t) pos);
+}
+
+
+gint sci_indicator_value_at(ScintillaObject *sci, gint indic, gint pos)
+{
+	return (gint) SSM(sci, SCI_INDICATORVALUEAT, (uptr_t) indic, (uptr_t) pos);
 }
 
 
