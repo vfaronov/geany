@@ -1240,6 +1240,8 @@ void dialogs_show_file_properties(GeanyDocument *doc)
 
 	label = ui_lookup_widget(dialog, "file_location_label");
 	gtk_label_set_text(GTK_LABEL(label), doc->file_name);
+	gtk_widget_grab_focus(GTK_WIDGET(label));
+	gtk_label_select_region(GTK_LABEL(label), -1, -1);
 
 	check = ui_lookup_widget(dialog, "file_read_only_check");
 	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), doc->readonly);
